@@ -3,80 +3,60 @@ package args
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"reflect"
-	"encoding"
 )
 
-type Arg interface{
-	Match(s string) (string, bool)
-	Parse(value string, next []string) ([]string, error)
+type FlagOpt struct {
+	Long   string
+	Target *bool
+	Short  rune
 }
 
-type subcommand struct{
-	Name string
-	run func([]string) ([]string, error)
+var ExitSuccess = errors.New("exit success")
+
+func HelpFlag() *flag {
+	return &flag{
+		long:  "help",
+		short: 'h',
+		run: func(p *Parser) error {
+			p.PrintChoices(os.Stdout)
+			return ExitSuccess
+		},
+	}
 }
 
-func (cmd subcommand) Match(s string) (string, bool) {
-	return "", s==cmd.Name
-}
-
-func (cmd subcommand) Parse(value string, next []string) ([]string, error) {
-	return cmd.run(next)
-}
-
-func Subcommand(name string, run func([]string)([]string,error)) Arg {
-	return subcommand{Name: name, run: run}
-}
-
-type FlagOpt struct{
-	target *bool
-	Long string
-	Short rune
-}
-
-func NewFlag(opt FlagOpt) Flag {
-	return Flag{opt: opt}
-}
-
-type Flag struct{
-	opt FlagOpt
-}
-
-func (f Flag) Value() bool {
-	return f.opt.target != nil && *f.opt.target
-}
-
-type pos[T any] struct{
-	target *T
-}
-
-type PosTarget interface{
-	~string | encoding.TextUnmarshaler
-}
-
-type Option struct {
-	Name string
+type pos struct {
+	Name   string
 	Target interface{}
 }
 
-type Pos struct{
-	Target *PosTarget
+func (p pos) Usage() string {
+	if p.Name != "" {
+		return p.Name
+	}
+	return reflect.ValueOf(p.Target).Elem().Type().String()
 }
 
-
-type parser struct{
-	args []string
+func Pos(target interface{}) pos {
+	return pos{
+		Target: target,
+	}
 }
 
-func NewMainParser() *parser {
-	return &parser{os.Args[1:]}
+type Parser struct {
+	args      *[]string
+	flags     []*flag
+	options   []*Option
+	subcmds   []subcommand
+	RanSubCmd bool
+	Err       error
 }
 
-func (p *parser) ParseAll(args ...Arg) error {
-	for len(p.args) > 0 {
-		err := p.ParseOne(args...)
+func (p *Parser) Parse() error {
+	for len(*p.args) > 0 {
+		err := p.ParseOne()
 		if err != nil {
 			return err
 		}
@@ -84,53 +64,177 @@ func (p *parser) ParseAll(args ...Arg) error {
 	return nil
 }
 
-type Match struct{
-	Input string
-	Arg Arg
-	Value string
+func catch(err *error) {
+	if *err != nil {
+		return
+	}
+	r := recover()
+	if r == nil {
+		return
+	}
+	rErr, ok := r.(error)
+	if !ok {
+		panic(r)
+	}
+	if rErr == ExitSuccess {
+		*err = rErr
+	}
 }
 
-func (p *parser) ParseOne(args...Arg) error {
-	matches := make([]Match, 0, 1)
-	for _, arg := range args {
-		value, ok :=  arg.Match(p.args[0])
-		if ok {
-			matches = append(matches, Match{p.args[0], arg,value})
+func (p *Parser) ParseOne() (err error) {
+	arg := (*p.args)[0]
+	//if arg == "--" {
+	//	return p.parsePositionalOnly(params...)
+	//}
+	if len(arg) > 2 && arg[:2] == "--" {
+		matches := make([]*flag, 0, 1)
+		for _, keyed := range p.flags {
+			for _, l := range keyed.Long() {
+				if l == arg[2:] {
+					matches = append(matches, keyed)
+				}
+			}
+		}
+		switch len(matches) {
+		case 0:
+		case 1:
+			*p.args = (*p.args)[1:]
+			match := matches[0]
+			if match.run != nil {
+				p.RanSubCmd = true
+				return match.run(p)
+			}
+			*p.args, err = match.Parse((*p.args)[:])
+			return
+		default:
+			err = errors.New("matched multiple params")
+			return
 		}
 	}
-	switch len(matches) {
-	case 0:
-		return errors.New("unmatched argument")
-	default:
-		return fmt.Errorf("matched multiple parameters: %v", matches)
-	case 1:
+	for _, subcmd := range p.subcmds {
+		if subcmd.Name != arg {
+			continue
+		}
+		*p.args = (*p.args)[1:]
+		err = subcmd.Run(SubCmdCtx{unusedArgs: p.args})
+		if err != nil {
+			err = fmt.Errorf("running subcommand %q: %w", subcmd.Name, err)
+		}
+		p.RanSubCmd = true
+		return
 	}
-	match := matches[0]
-	p.args=p.args[1:]
-	left, err := match.Arg.Parse(match.Value, p.args)
-	if err != nil {
-		return fmt.Errorf("parsing %v: %w", match.Arg, err)
-	}
-	p.args=left
-	return nil
+	return fmt.Errorf("unexpected argument: %q", arg)
 }
 
-func (p *parser) MustParse(args ...Arg) {
-	err := p.ParseAll(args...)
-	if err != nil {
-		panic(err)
+func (p *Parser) eachChoice(each func(c Param)) {
+	for _, choice := range p.flags {
+		each(choice)
+	}
+	for _, choice := range p.options {
+		each(choice)
+	}
+	for _, choice := range p.subcmds {
+		each(choice)
 	}
 }
 
-func FromStruct(target interface{}) (args []Arg) {
-	value := reflect.ValueOf(target)
+func (p *Parser) PrintChoices(w io.Writer) {
+	p.eachChoice(func(c Param) {
+		fmt.Fprintf(w, "  %v\n", c.Usage())
+	})
+}
+
+type SubCmdCtx struct {
+	unusedArgs *[]string
+	err        error
+}
+
+func NewParser() *Parser {
+	return &Parser{
+		flags: []*flag{HelpFlag()},
+	}
+}
+
+func (p *Parser) SetArgs(args *[]string) {
+	p.args = args
+}
+
+func (me *SubCmdCtx) NewParser() *Parser {
+	p := NewParser()
+	p.SetArgs(me.unusedArgs)
+	return p
+}
+
+type SubcommandRunner func(ctx SubCmdCtx) (err error)
+
+type subcommand struct {
+	Run  SubcommandRunner
+	Name string
+}
+
+func (s subcommand) Usage() string {
+	return s.Name
+}
+
+func Subcommand(name string, run SubcommandRunner) subcommand {
+	return subcommand{Run: run, Name: name}
+}
+
+type Option struct {
+	Long   string
+	Target interface{}
+}
+
+func (o Option) Usage() string {
+	return fmt.Sprintf("--%v", o.Long)
+}
+
+type Param interface {
+	Usage() string
+}
+
+func FromStruct(target interface{}) (params []Param) {
+	value := reflect.ValueOf(target).Elem()
+	type_ := value.Type()
 	for i := 0; i < value.NumField(); i++ {
-		field := value.Field(i)
-		structField := value.Type().Field(i)
-		args = append(args, Option{
-			Name: structField.Name,
-			Target: field.Addr().Interface(),
+		structField := type_.Field(i)
+		params = append(params, &Option{
+			Long:   structField.Name,
+			Target: value.Field(i).Addr().Interface(),
 		})
 	}
 	return
+}
+
+func ParseMain(params ...Param) *Parser {
+	return Parse(os.Args[1:], params...)
+}
+
+func (p *Parser) AddParams(params ...Param) *Parser {
+	for _, param := range params {
+		switch t := param.(type) {
+		case *flag:
+			p.flags = append(p.flags, t)
+		case subcommand:
+			p.subcmds = append(p.subcmds, t)
+		case *Option:
+			p.options = append(p.options, t)
+		default:
+			panic(param)
+		}
+	}
+	return p
+}
+
+func Parse(args []string, params ...Param) *Parser {
+	p := Parser{
+		args: &args,
+	}
+	p.AddParams(params...)
+	p.Err = p.Parse()
+	return &p
+}
+
+func FatalUsage() {
+	os.Exit(2)
 }
