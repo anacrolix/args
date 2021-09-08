@@ -10,17 +10,20 @@ type Param interface {
 }
 
 type param struct {
-	target     interface{}
-	long       []string
-	short      []rune
-	run        func(SubCmdCtx) error
-	nullary    bool
-	parse      func(args []string) (unusedArgs []string, err error)
+	target interface{}
+	long   []string
+	short  []rune
+	run    func(SubCmdCtx) error
+	// Doesn't take arguments (except any attached to a switch).
+	nullary bool
+	parse   func(args []string) (unusedArgs []string, err error)
+	// The param is filled based on its position, rather than a switch
 	positional bool
-	valid      bool
-	name       string
-	help       string
-	satisfied  bool
+	// The param is still taking arguments
+	valid     bool
+	name      string
+	help      string
+	satisfied bool
 }
 
 func (p *param) String() string {

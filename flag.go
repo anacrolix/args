@@ -1,5 +1,6 @@
 package args
 
+// Flags are switches that don't take arguments.
 func Flag(opts FlagOpt) *param {
 	pm := &param{
 		target:    opts.Target,
