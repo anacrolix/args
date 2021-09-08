@@ -4,8 +4,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"reflect"
+	"strconv"
+	"strings"
 )
 
 type FlagOpt struct {
@@ -16,29 +19,16 @@ type FlagOpt struct {
 
 var ExitSuccess = errors.New("exit success")
 
-func HelpFlag() *flag {
-	return &flag{
-		long:  "help",
-		short: 'h',
-		run: func(p *Parser) error {
-			p.PrintChoices(os.Stdout)
+func HelpFlag() *param {
+	return &param{
+		long:  []string{"help"},
+		short: []rune{'h'},
+		run: func(p SubCmdCtx) error {
+			p.parent.PrintChoices(os.Stdout)
 			return ExitSuccess
 		},
+		name: "help",
 	}
-}
-
-type pos struct {
-	Name   string
-	ok     bool
-	Target interface{}
-}
-
-func (p *pos) Valid() bool {
-	return !p.ok
-}
-
-func (p *pos) Parse(args []string) ([]string, error) {
-	return args[1:], unmarshalInto(args[0], p.Target)
 }
 
 func unmarshalInto(s string, target interface{}) error {
@@ -46,7 +36,6 @@ func unmarshalInto(s string, target interface{}) error {
 	switch value.Type().Kind() {
 	case reflect.String:
 		value.SetString(s)
-		return nil
 	case reflect.Slice:
 		x := reflect.New(value.Type().Elem())
 		err := unmarshalInto(s, x.Interface())
@@ -54,31 +43,33 @@ func unmarshalInto(s string, target interface{}) error {
 			return fmt.Errorf("unmarshalling in to new element for %v: %w", value.Type(), err)
 		}
 		value.Set(reflect.Append(value, x.Elem()))
-		return nil
+	case reflect.Bool:
+		b, err := strconv.ParseBool(s)
+		if err != nil {
+			return err
+		}
+		value.SetBool(b)
 	default:
 		return fmt.Errorf("unhandled target type %v", value.Type())
 	}
+	return nil
 }
 
-func (p pos) Usage() string {
-	if p.Name != "" {
-		return p.Name
+func Pos(target interface{}) *param {
+	pm := &param{
+		target:     target,
+		positional: true,
+		valid:      true,
 	}
-	return reflect.ValueOf(p.Target).Elem().Type().String()
-}
-
-func Pos(target interface{}) pos {
-	return pos{
-		Target: target,
+	pm.parse = func(args []string) ([]string, error) {
+		return args[1:], unmarshalInto(args[0], pm.target)
 	}
+	return pm
 }
 
 type Parser struct {
 	args      *[]string
-	flags     []*flag
-	options   []*Option
-	pos       []*pos
-	subcmds   []subcommand
+	params    []*param
 	RanSubCmd bool
 	Err       error
 }
@@ -110,88 +101,132 @@ func catch(err *error) {
 	}
 }
 
+func filterParams(pms []*param, f func(pm *param) bool) (ret []*param) {
+	for _, pm := range pms {
+		if f(pm) {
+			ret = append(ret, pm)
+		}
+	}
+	return
+}
+
+func (p *Parser) selectOneParam(f func(pm *param) bool) (*param, error) {
+	pms := filterParams(p.params, f)
+	switch len(pms) {
+	case 0:
+		return nil, nil
+	case 1:
+		return pms[0], nil
+	default:
+		return nil, fmt.Errorf("matched multiple params: %v", pms)
+	}
+}
+
 func (p *Parser) ParseOne() (err error) {
 	arg := (*p.args)[0]
+	log.Printf("processing %q", arg)
 	//if arg == "--" {
 	//	return p.parsePositionalOnly(params...)
 	//}
+	*p.args = (*p.args)[1:]
 	if len(arg) > 2 && arg[:2] == "--" {
-		matches := make([]*flag, 0, 1)
-		for _, keyed := range p.flags {
-			for _, l := range keyed.Long() {
+		match, err := p.selectOneParam(func(pm *param) bool {
+			if pm.positional {
+				return false
+			}
+			for _, l := range pm.long {
 				if l == arg[2:] {
-					matches = append(matches, keyed)
+					return true
 				}
 			}
+			return false
+		})
+		if err != nil {
+			return err
 		}
-		switch len(matches) {
-		case 0:
+		if match == nil {
 			return fmt.Errorf("unmatched switch %q", arg)
-		case 1:
-			*p.args = (*p.args)[1:]
-			match := matches[0]
-			if match.run != nil {
-				p.RanSubCmd = true
-				return match.run(p)
-			}
-			*p.args, err = match.Parse((*p.args)[:])
-			return
-		default:
-			err = errors.New("matched multiple params")
-			return
 		}
+		if match.run != nil {
+			p.RanSubCmd = true
+			return match.run(SubCmdCtx{
+				unusedArgs: p.args,
+				parent:     p,
+			})
+		}
+		*p.args, err = match.parse((*p.args)[:])
+		return err
 	}
-	for _, pos := range p.pos {
-		if !pos.Valid() {
-			continue
+	subcmd, err := p.selectOneParam(func(pm *param) bool {
+		if !pm.positional {
+			return false
 		}
-		*p.args, err = pos.Parse(*p.args)
+		for _, l := range pm.long {
+			if l == arg {
+				return true
+			}
+		}
+		return false
+	})
+	if err != nil {
 		return
 	}
-	for _, subcmd := range p.subcmds {
-		if subcmd.Name != arg {
-			continue
-		}
-		*p.args = (*p.args)[1:]
-		err = subcmd.Run(SubCmdCtx{unusedArgs: p.args})
+	if subcmd != nil {
+		err = subcmd.run(SubCmdCtx{unusedArgs: p.args})
 		if err != nil {
-			err = fmt.Errorf("running subcommand %q: %w", subcmd.Name, err)
+			err = fmt.Errorf("running subcommand %q: %w", subcmd.name, err)
 		}
 		p.RanSubCmd = true
 		return
 	}
-	return fmt.Errorf("unexpected argument: %q", arg)
+	pos, err := p.selectOneParam(func(pm *param) bool {
+		if !pm.positional {
+			return false
+		}
+		return pm.valid && len(pm.short) == 0 && len(pm.long) == 0
+	})
+	if err != nil {
+		return err
+	}
+	if pos != nil {
+		*p.args, err = pos.parse(append([]string{arg}, *p.args...))
+		return
+	}
+	return fmt.Errorf("unexpected argument: %q, choices: %v", arg, p.params)
 }
 
 func (p *Parser) eachChoice(each func(c Param)) {
-	for _, choice := range p.flags {
-		each(choice)
-	}
-	for _, choice := range p.options {
-		each(choice)
-	}
-	for _, choice := range p.subcmds {
-		each(choice)
-	}
-	for _, choice := range p.pos {
+	for _, choice := range p.params {
 		each(choice)
 	}
 }
 
 func (p *Parser) PrintChoices(w io.Writer) {
 	p.eachChoice(func(c Param) {
-		fmt.Fprintf(w, "  %v\n", c.Usage())
+		u := c.Usage()
+		fmt.Fprintf(w, "  ")
+		if len(u.Switches) != 0 {
+			fmt.Fprintf(w, "%v ", strings.Join(u.Switches, ","))
+		}
+		for _, arg := range u.Arguments {
+			fmt.Fprintf(w, "<%v>", arg)
+		}
+		fmt.Fprintf(w, "\n")
+		if u.Help != "" {
+			fmt.Fprintf(w, "    %v\n", u.Help)
+		}
 	})
 }
 
 type SubCmdCtx struct {
 	unusedArgs *[]string
+	parent     *Parser
 	err        error
 }
 
 func NewParser() *Parser {
 	return &Parser{
-		flags: []*flag{HelpFlag()},
+		params: []*param{HelpFlag()},
 	}
 }
 
@@ -207,30 +242,13 @@ func (me *SubCmdCtx) NewParser() *Parser {
 
 type SubcommandRunner func(ctx SubCmdCtx) (err error)
 
-type subcommand struct {
-	Run  SubcommandRunner
-	Name string
-}
-
-func (s subcommand) Usage() string {
-	return s.Name
-}
-
-func Subcommand(name string, run SubcommandRunner) subcommand {
-	return subcommand{Run: run, Name: name}
-}
-
-type Option struct {
-	Long   string
-	Target interface{}
-}
-
-func (o Option) Usage() string {
-	return fmt.Sprintf("--%v", o.Long)
-}
-
-type Param interface {
-	Usage() string
+func Subcommand(name string, run SubcommandRunner) *param {
+	return &param{
+		run:        run,
+		name:       name,
+		long:       []string{name},
+		positional: true,
+	}
 }
 
 func FromStruct(target interface{}) (params []Param) {
@@ -240,17 +258,28 @@ func FromStruct(target interface{}) (params []Param) {
 		fieldValue := value.Field(i)
 		target := fieldValue.Addr().Interface()
 		structField := type_.Field(i)
-		if structField.Tag.Get("arg") == "positional" {
-			params = append(params, &pos{
-				Name:   structField.Name,
-				Target: target,
-			})
-		} else {
-			params = append(params, &Option{
-				Long:   structField.Name,
-				Target: target,
-			})
+		pm := &param{
+			name:       structField.Name,
+			target:     target,
+			positional: structField.Tag.Get("arg") == "positional",
+			valid:      true,
+			help:       structField.Tag.Get("help"),
 		}
+		switch target.(type) {
+		case *bool, **bool:
+			pm.nullary = true
+			pm.parse = func(args []string) (unusedArgs []string, err error) {
+				return args, unmarshalInto("true", target)
+			}
+		default:
+			pm.parse = func(args []string) (unusedArgs []string, err error) {
+				return args[1:], unmarshalInto(args[0], target)
+			}
+		}
+		if !pm.positional {
+			pm.long = []string{structField.Name}
+		}
+		params = append(params, pm)
 	}
 	return
 }
@@ -260,19 +289,8 @@ func ParseMain(params ...Param) *Parser {
 }
 
 func (p *Parser) AddParams(params ...Param) *Parser {
-	for _, param := range params {
-		switch t := param.(type) {
-		case *flag:
-			p.flags = append(p.flags, t)
-		case subcommand:
-			p.subcmds = append(p.subcmds, t)
-		case *Option:
-			p.options = append(p.options, t)
-		case *pos:
-			p.pos = append(p.pos, t)
-		default:
-			panic(param)
-		}
+	for _, pm := range params {
+		p.params = append(p.params, pm.(*param))
 	}
 	return p
 }
