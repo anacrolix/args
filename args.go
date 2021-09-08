@@ -9,6 +9,8 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+
+	"github.com/huandu/xstrings"
 )
 
 type FlagOpt struct {
@@ -277,7 +279,7 @@ func FromStruct(target interface{}) (params []Param) {
 			}
 		}
 		if !pm.positional {
-			pm.long = []string{structField.Name}
+			pm.long = []string{xstrings.ToKebabCase(structField.Name)}
 		}
 		params = append(params, pm)
 	}
