@@ -1,6 +1,7 @@
 package args
 
 import (
+	"encoding"
 	"errors"
 	"fmt"
 	"io"
@@ -35,6 +36,9 @@ func HelpFlag() *param {
 }
 
 func unmarshalInto(s string, target interface{}) error {
+	if herp, ok := target.(encoding.TextUnmarshaler); ok {
+		return herp.UnmarshalText([]byte(s))
+	}
 	value := reflect.ValueOf(target).Elem()
 	switch value.Type().Kind() {
 	case reflect.String:
@@ -66,7 +70,13 @@ func Pos(name string, target interface{}) *param {
 		name:       name,
 	}
 	pm.parse = func(args []string) ([]string, error) {
-		return args[1:], unmarshalInto(args[0], pm.target)
+		targetType := reflect.TypeOf(pm.target)
+		pm.valid = targetType.Kind() == reflect.Slice
+		err := unmarshalInto(args[0], pm.target)
+		if err != nil {
+			err = fmt.Errorf("unmarshalling %q into %v", args[0], targetType)
+		}
+		return args[1:], err
 	}
 	return pm
 }
@@ -199,6 +209,9 @@ func (p *Parser) ParseOne() (err error) {
 	}
 	if pos != nil {
 		*p.args, err = pos.parse(append([]string{arg}, *p.args...))
+		if err != nil {
+			err = fmt.Errorf("parsing %v: %w", pos.name, err)
+		}
 		return
 	}
 	return fmt.Errorf("unexpected argument: %q, choices: %v", arg, p.params)
