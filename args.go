@@ -31,6 +31,7 @@ func HelpFlag() *param {
 		},
 		name:      "help",
 		satisfied: true,
+		nullary:   true,
 	}
 }
 
@@ -61,7 +62,15 @@ func unmarshalInto(s string, target interface{}) error {
 	return nil
 }
 
-func Pos(name string, target interface{}) *param {
+func AfterParse(f func() error) ParamOpt {
+	return func(p *param) {
+		p.afterParse = append(p.afterParse, f)
+	}
+}
+
+type ParamOpt func(*param)
+
+func Pos(name string, target interface{}, opts ...ParamOpt) *param {
 	pm := &param{
 		target:     target,
 		positional: true,
@@ -71,11 +80,15 @@ func Pos(name string, target interface{}) *param {
 	pm.parse = func(args []string, negative bool) ([]string, error) {
 		targetType := reflect.TypeOf(pm.target)
 		pm.valid = targetType.Kind() == reflect.Slice
+		pm.satisfied = true
 		err := unmarshalInto(args[0], pm.target)
 		if err != nil {
 			err = fmt.Errorf("unmarshalling %q into %v", args[0], targetType)
 		}
 		return args[1:], err
+	}
+	for _, opt := range opts {
+		opt(pm)
 	}
 	return pm
 }
@@ -100,23 +113,6 @@ func (p *Parser) Parse() error {
 		}
 	}
 	return nil
-}
-
-func catch(err *error) {
-	if *err != nil {
-		return
-	}
-	r := recover()
-	if r == nil {
-		return
-	}
-	rErr, ok := r.(error)
-	if !ok {
-		panic(r)
-	}
-	if rErr == ExitSuccess {
-		*err = rErr
-	}
 }
 
 func filterParams(pms []*param, f func(pm *param) match) (ret []match) {
@@ -156,6 +152,20 @@ type match struct {
 	ok       bool
 }
 
+func (p *Parser) doParse(pm *param, args []string, negative bool) (err error) {
+	*p.args, err = pm.parse(args, negative)
+	if err != nil {
+		return
+	}
+	for _, ap := range pm.afterParse {
+		err = ap()
+		if err != nil {
+			err = fmt.Errorf("running after parse hook: %w", err)
+		}
+	}
+	return
+}
+
 func (p *Parser) ParseOne() (err error) {
 	arg := (*p.args)[0]
 	//log.Printf("processing %q", arg)
@@ -193,7 +203,7 @@ func (p *Parser) ParseOne() (err error) {
 				parent:     p,
 			})
 		}
-		*p.args, err = match.param.parse((*p.args)[:], match.negative)
+		err = p.doParse(match.param, *p.args, match.negative)
 		return err
 	}
 	subcmd, err := p.selectOneParam(func(pm *param) match {
@@ -228,24 +238,32 @@ func (p *Parser) ParseOne() (err error) {
 		return err
 	}
 	if pos.ok {
-		*p.args, err = pos.parse(append([]string{arg}, *p.args...), pos.negative)
+		err = p.doParse(pos.param, append([]string{arg}, *p.args...), pos.negative)
 		if err != nil {
 			err = fmt.Errorf("parsing %v: %w", pos.name, err)
 		}
 		return
 	}
-	return fmt.Errorf("unexpected argument: %q, choices: %v", arg, p.params)
+	return errUnexpectedArg{
+		params: p.params,
+		arg:    arg,
+	}
 }
 
-func (p *Parser) eachChoice(each func(c Param)) {
+func (p *Parser) eachChoice(each func(c *param)) {
 	for _, choice := range p.params {
 		each(choice)
 	}
 }
 
 func (p *Parser) PrintChoices(w io.Writer) {
-	p.eachChoice(func(c Param) {
-		u := c.Usage()
+	fmt.Fprintf(w, "valid arguments at this point:\n")
+
+	p.eachChoice(func(pm *param) {
+		if !pm.valid {
+			return
+		}
+		u := pm.Usage()
 		fmt.Fprintf(w, "  ")
 		if len(u.Switches) != 0 {
 			fmt.Fprintf(w, "%v ", strings.Join(u.Switches, ","))
@@ -291,6 +309,8 @@ func Subcommand(name string, run SubcommandRunner) *param {
 		long:       []string{name},
 		positional: true,
 		satisfied:  true,
+		nullary:    true,
+		valid:      true,
 	}
 }
 

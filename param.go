@@ -15,8 +15,9 @@ type param struct {
 	short  []rune
 	run    func(SubCmdCtx) error
 	// Doesn't take arguments (except any attached to a switch).
-	nullary bool
-	parse   func(args []string, negative bool) (unusedArgs []string, err error)
+	nullary    bool
+	parse      func(args []string, negative bool) (unusedArgs []string, err error)
+	afterParse []func() error
 	// The param is filled based on its position, rather than a switch
 	positional bool
 	// The param is still taking arguments
@@ -41,11 +42,15 @@ type Usage struct {
 }
 
 func (p *param) Usage() (u Usage) {
-	for _, l := range p.long {
-		u.Switches = append(u.Switches, "--"+l)
-	}
-	for _, s := range p.short {
-		u.Switches = append(u.Switches, "-"+string(s))
+	if p.positional {
+		u.Switches = append(p.long)
+	} else {
+		for _, l := range p.long {
+			u.Switches = append(u.Switches, "--"+l)
+		}
+		for _, s := range p.short {
+			u.Switches = append(u.Switches, "-"+string(s))
+		}
 	}
 	if !p.nullary {
 		u.Arguments = append(u.Arguments, p.name)
