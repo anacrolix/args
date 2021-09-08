@@ -203,6 +203,22 @@ func (p *Parser) ParseOne() (err error) {
 		err = p.doParse(match.param, *p.args, match.negative)
 		return err
 	}
+	pos, err := p.selectFirstParam(func(pm *param) match {
+		if !pm.positional {
+			return match{ok: false}
+		}
+		return match{ok: pm.valid && len(pm.short) == 0 && len(pm.long) == 0}
+	})
+	if err != nil {
+		return err
+	}
+	if pos.ok {
+		err = p.doParse(pos.param, append([]string{arg}, *p.args...), pos.negative)
+		if err != nil {
+			err = fmt.Errorf("parsing %v: %w", pos.name, err)
+		}
+		return
+	}
 	subcmd, err := p.selectOneParam(func(pm *param) match {
 		if !pm.positional {
 			return match{ok: false}
@@ -223,22 +239,6 @@ func (p *Parser) ParseOne() (err error) {
 			err = fmt.Errorf("running subcommand %q: %w", subcmd.param.name, err)
 		}
 		p.RanSubCmd = true
-		return
-	}
-	pos, err := p.selectFirstParam(func(pm *param) match {
-		if !pm.positional {
-			return match{ok: false}
-		}
-		return match{ok: pm.valid && len(pm.short) == 0 && len(pm.long) == 0}
-	})
-	if err != nil {
-		return err
-	}
-	if pos.ok {
-		err = p.doParse(pos.param, append([]string{arg}, *p.args...), pos.negative)
-		if err != nil {
-			err = fmt.Errorf("parsing %v: %w", pos.name, err)
-		}
 		return
 	}
 	return errUnexpectedArg{
