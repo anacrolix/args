@@ -380,12 +380,11 @@ func (p *Parser) AddParams(params ...Param) *Parser {
 }
 
 func Parse(args []string, params ...Param) *Parser {
-	p := Parser{
-		args: &args,
-	}
+	p := NewParser()
+	p.SetArgs(&args)
 	p.AddParams(params...)
 	p.Err = p.Parse()
-	return &p
+	return p
 }
 
 func FatalUsage() {
