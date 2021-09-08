@@ -129,6 +129,14 @@ func filterParams(pms []*param, f func(pm *param) bool) (ret []*param) {
 	return
 }
 
+func (p *Parser) selectFirstParam(f func(pm *param) bool) (*param, error) {
+	pms := filterParams(p.params, f)
+	if len(pms) == 0 {
+		return nil, nil
+	}
+	return pms[0], nil
+}
+
 func (p *Parser) selectOneParam(f func(pm *param) bool) (*param, error) {
 	pms := filterParams(p.params, f)
 	switch len(pms) {
@@ -198,7 +206,7 @@ func (p *Parser) ParseOne() (err error) {
 		p.RanSubCmd = true
 		return
 	}
-	pos, err := p.selectOneParam(func(pm *param) bool {
+	pos, err := p.selectFirstParam(func(pm *param) bool {
 		if !pm.positional {
 			return false
 		}
