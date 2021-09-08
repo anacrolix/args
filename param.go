@@ -20,6 +20,7 @@ type param struct {
 	valid      bool
 	name       string
 	help       string
+	satisfied  bool
 }
 
 func (p *param) String() string {

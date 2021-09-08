@@ -29,7 +29,8 @@ func HelpFlag() *param {
 			p.parent.PrintChoices(os.Stdout)
 			return ExitSuccess
 		},
-		name: "help",
+		name:      "help",
+		satisfied: true,
 	}
 }
 
@@ -82,6 +83,11 @@ func (p *Parser) Parse() error {
 		err := p.ParseOne()
 		if err != nil {
 			return err
+		}
+	}
+	for _, pm := range p.params {
+		if !pm.satisfied {
+			return fmt.Errorf("parameter not satisfied: %v", pm)
 		}
 	}
 	return nil
@@ -268,19 +274,31 @@ func FromStruct(target interface{}) (params []Param) {
 			valid:      true,
 			help:       structField.Tag.Get("help"),
 		}
+		arity := structField.Tag.Get("arity")
 		switch target.(type) {
 		case *bool, **bool:
 			pm.nullary = true
 			pm.parse = func(args []string) (unusedArgs []string, err error) {
 				return args, unmarshalInto("true", target)
 			}
+			pm.satisfied = true
 		default:
 			pm.parse = func(args []string) (unusedArgs []string, err error) {
+				if arity == "+" {
+					pm.satisfied = true
+				}
 				return args[1:], unmarshalInto(args[0], target)
 			}
 		}
 		if !pm.positional {
 			pm.long = []string{xstrings.ToKebabCase(structField.Name)}
+		}
+		switch arity {
+		case "":
+			pm.satisfied = true
+		case "+":
+		default:
+			panic(fmt.Sprintf("unhandled arity %q on %v", arity, type_))
 		}
 		params = append(params, pm)
 	}
