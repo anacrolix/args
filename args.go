@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"reflect"
 	"strconv"
@@ -120,103 +119,116 @@ func catch(err *error) {
 	}
 }
 
-func filterParams(pms []*param, f func(pm *param) bool) (ret []*param) {
+func filterParams(pms []*param, f func(pm *param) match) (ret []match) {
 	for _, pm := range pms {
-		if f(pm) {
-			ret = append(ret, pm)
+		m := f(pm)
+		if m.ok {
+			m.param = pm
+			ret = append(ret, m)
 		}
 	}
 	return
 }
 
-func (p *Parser) selectFirstParam(f func(pm *param) bool) (*param, error) {
+func (p *Parser) selectFirstParam(f func(pm *param) match) (match, error) {
 	pms := filterParams(p.params, f)
 	if len(pms) == 0 {
-		return nil, nil
+		return match{ok: false}, nil
 	}
 	return pms[0], nil
 }
 
-func (p *Parser) selectOneParam(f func(pm *param) bool) (*param, error) {
+func (p *Parser) selectOneParam(f func(pm *param) match) (match, error) {
 	pms := filterParams(p.params, f)
 	switch len(pms) {
 	case 0:
-		return nil, nil
+		return match{ok: false}, nil
 	case 1:
 		return pms[0], nil
 	default:
-		return nil, fmt.Errorf("matched multiple params: %v", pms)
+		return match{ok: false}, fmt.Errorf("matched multiple params: %v", pms)
 	}
+}
+
+type match struct {
+	*param
+	negative bool
+	ok       bool
 }
 
 func (p *Parser) ParseOne() (err error) {
 	arg := (*p.args)[0]
-	log.Printf("processing %q", arg)
+	//log.Printf("processing %q", arg)
 	//if arg == "--" {
 	//	return p.parsePositionalOnly(params...)
 	//}
 	*p.args = (*p.args)[1:]
 	if len(arg) > 2 && arg[:2] == "--" {
-		match, err := p.selectOneParam(func(pm *param) bool {
+		match, err := p.selectOneParam(func(pm *param) match {
 			if pm.positional {
-				return false
+				return match{ok: false}
 			}
 			for _, l := range pm.long {
 				if l == arg[2:] {
-					return true
+					return match{ok: true}
+				}
+				if pm.negative != "" {
+					if pm.negative+"-"+l == arg[2:] {
+						return match{negative: true, ok: true}
+					}
 				}
 			}
-			return false
+			return match{ok: false}
 		})
 		if err != nil {
 			return err
 		}
-		if match == nil {
+		if !match.ok {
 			return fmt.Errorf("unmatched switch %q", arg)
 		}
-		if match.run != nil {
+		if match.param.run != nil {
 			p.RanSubCmd = true
-			return match.run(SubCmdCtx{
+			return match.param.run(SubCmdCtx{
 				unusedArgs: p.args,
 				parent:     p,
 			})
 		}
-		*p.args, err = match.parse((*p.args)[:])
+		*p.args, err = match.param.parse((*p.args)[:], match.negative)
 		return err
 	}
-	subcmd, err := p.selectOneParam(func(pm *param) bool {
+	subcmd, err := p.selectOneParam(func(pm *param) match {
 		if !pm.positional {
-			return false
+			return match{ok: false}
 		}
 		for _, l := range pm.long {
 			if l == arg {
-				return true
+				return match{ok: true}
 			}
 		}
-		return false
+		return match{ok: false}
 	})
 	if err != nil {
 		return
 	}
-	if subcmd != nil {
-		err = subcmd.run(SubCmdCtx{unusedArgs: p.args})
+	if subcmd.ok {
+		err = subcmd.param.run(SubCmdCtx{unusedArgs: p.args})
 		if err != nil {
-			err = fmt.Errorf("running subcommand %q: %w", subcmd.name, err)
+			err = fmt.Errorf("running subcommand %q: %w", subcmd.param.name, err)
 		}
 		p.RanSubCmd = true
 		return
 	}
-	pos, err := p.selectFirstParam(func(pm *param) bool {
+	pos, err := p.selectFirstParam(func(pm *param) match {
 		if !pm.positional {
-			return false
+			return match{ok: false}
 		}
-		return pm.valid && len(pm.short) == 0 && len(pm.long) == 0
+		return match{ok: pm.valid && len(pm.short) == 0 && len(pm.long) == 0}
 	})
 	if err != nil {
 		return err
 	}
-	if pos != nil {
-		*p.args, err = pos.parse(append([]string{arg}, *p.args...))
+	if pos.ok {
+		*p.args, err = pos.parse(append([]string{arg}, *p.args...), pos.negative)
 		if err != nil {
 			err = fmt.Errorf("parsing %v: %w", pos.name, err)
 		}
@@ -299,12 +311,17 @@ func FromStruct(target interface{}) (params []Param) {
 		switch target.(type) {
 		case *bool, **bool:
 			pm.nullary = true
-			pm.parse = func(args []string) (unusedArgs []string, err error) {
-				return args, unmarshalInto("true", target)
+			pm.parse = func(args []string, negative bool) (unusedArgs []string, err error) {
+				s := "true"
+				if negative {
+					s = "false"
+				}
+				return args, unmarshalInto(s, target)
 			}
 			pm.satisfied = true
+			pm.negative = "no"
 		default:
-			pm.parse = func(args []string) (unusedArgs []string, err error) {
+			pm.parse = func(args []string, negative bool) (unusedArgs []string, err error) {
 				if arity == "+" {
 					pm.satisfied = true
 				}

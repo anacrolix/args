@@ -16,7 +16,7 @@ type param struct {
 	run    func(SubCmdCtx) error
 	// Doesn't take arguments (except any attached to a switch).
 	nullary bool
-	parse   func(args []string) (unusedArgs []string, err error)
+	parse   func(args []string, negative bool) (unusedArgs []string, err error)
 	// The param is filled based on its position, rather than a switch
 	positional bool
 	// The param is still taking arguments
@@ -24,6 +24,7 @@ type param struct {
 	name      string
 	help      string
 	satisfied bool
+	negative  string
 }
 
 func (p *param) String() string {
