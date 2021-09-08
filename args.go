@@ -216,7 +216,7 @@ func (p *Parser) PrintChoices(w io.Writer) {
 		}
 		fmt.Fprintf(w, "\n")
 		if u.Help != "" {
-			fmt.Fprintf(w, "    %v\n", u.Help)
+			fmt.Fprintf(w, "\t%v\n", u.Help)
 		}
 	})
 }
