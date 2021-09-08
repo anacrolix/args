@@ -29,7 +29,35 @@ func HelpFlag() *flag {
 
 type pos struct {
 	Name   string
+	ok     bool
 	Target interface{}
+}
+
+func (p *pos) Valid() bool {
+	return !p.ok
+}
+
+func (p *pos) Parse(args []string) ([]string, error) {
+	return args[1:], unmarshalInto(args[0], p.Target)
+}
+
+func unmarshalInto(s string, target interface{}) error {
+	value := reflect.ValueOf(target).Elem()
+	switch value.Type().Kind() {
+	case reflect.String:
+		value.SetString(s)
+		return nil
+	case reflect.Slice:
+		x := reflect.New(value.Type().Elem())
+		err := unmarshalInto(s, x.Interface())
+		if err != nil {
+			return fmt.Errorf("unmarshalling in to new element for %v: %w", value.Type(), err)
+		}
+		value.Set(reflect.Append(value, x.Elem()))
+		return nil
+	default:
+		return fmt.Errorf("unhandled target type %v", value.Type())
+	}
 }
 
 func (p pos) Usage() string {
@@ -49,6 +77,7 @@ type Parser struct {
 	args      *[]string
 	flags     []*flag
 	options   []*Option
+	pos       []*pos
 	subcmds   []subcommand
 	RanSubCmd bool
 	Err       error
@@ -97,6 +126,7 @@ func (p *Parser) ParseOne() (err error) {
 		}
 		switch len(matches) {
 		case 0:
+			return fmt.Errorf("unmatched switch %q", arg)
 		case 1:
 			*p.args = (*p.args)[1:]
 			match := matches[0]
@@ -110,6 +140,13 @@ func (p *Parser) ParseOne() (err error) {
 			err = errors.New("matched multiple params")
 			return
 		}
+	}
+	for _, pos := range p.pos {
+		if !pos.Valid() {
+			continue
+		}
+		*p.args, err = pos.Parse(*p.args)
+		return
 	}
 	for _, subcmd := range p.subcmds {
 		if subcmd.Name != arg {
@@ -134,6 +171,9 @@ func (p *Parser) eachChoice(each func(c Param)) {
 		each(choice)
 	}
 	for _, choice := range p.subcmds {
+		each(choice)
+	}
+	for _, choice := range p.pos {
 		each(choice)
 	}
 }
@@ -197,11 +237,20 @@ func FromStruct(target interface{}) (params []Param) {
 	value := reflect.ValueOf(target).Elem()
 	type_ := value.Type()
 	for i := 0; i < value.NumField(); i++ {
+		fieldValue := value.Field(i)
+		target := fieldValue.Addr().Interface()
 		structField := type_.Field(i)
-		params = append(params, &Option{
-			Long:   structField.Name,
-			Target: value.Field(i).Addr().Interface(),
-		})
+		if structField.Tag.Get("arg") == "positional" {
+			params = append(params, &pos{
+				Name:   structField.Name,
+				Target: target,
+			})
+		} else {
+			params = append(params, &Option{
+				Long:   structField.Name,
+				Target: target,
+			})
+		}
 	}
 	return
 }
@@ -219,6 +268,8 @@ func (p *Parser) AddParams(params ...Param) *Parser {
 			p.subcmds = append(p.subcmds, t)
 		case *Option:
 			p.options = append(p.options, t)
+		case *pos:
+			p.pos = append(p.pos, t)
 		default:
 			panic(param)
 		}
