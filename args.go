@@ -290,6 +290,7 @@ func Subcommand(name string, run SubcommandRunner) *param {
 		name:       name,
 		long:       []string{name},
 		positional: true,
+		satisfied:  true,
 	}
 }
 
