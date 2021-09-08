@@ -57,11 +57,12 @@ func unmarshalInto(s string, target interface{}) error {
 	return nil
 }
 
-func Pos(target interface{}) *param {
+func Pos(name string, target interface{}) *param {
 	pm := &param{
 		target:     target,
 		positional: true,
 		valid:      true,
+		name:       name,
 	}
 	pm.parse = func(args []string) ([]string, error) {
 		return args[1:], unmarshalInto(args[0], pm.target)
