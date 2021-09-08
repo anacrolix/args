@@ -1,6 +1,7 @@
 package args
 
 import (
+	"errors"
 	"fmt"
 )
 
@@ -16,3 +17,5 @@ func (e errUnexpectedArg) Error() string {
 func (e errUnexpectedArg) Choices() []*param {
 	return e.params
 }
+
+var ErrHelped = errors.New("help flagged")

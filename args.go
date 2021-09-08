@@ -2,7 +2,6 @@ package args
 
 import (
 	"encoding"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -19,15 +18,13 @@ type FlagOpt struct {
 	Short  rune
 }
 
-var ExitSuccess = errors.New("exit success")
-
 func HelpFlag() *param {
 	return &param{
 		long:  []string{"help"},
 		short: []rune{'h'},
 		run: func(p SubCmdCtx) error {
 			p.parent.PrintChoices(os.Stdout)
-			return ExitSuccess
+			return ErrHelped
 		},
 		name:      "help",
 		satisfied: true,
