@@ -68,7 +68,7 @@ func Pos(name string, target interface{}) *param {
 		valid:      true,
 		name:       name,
 	}
-	pm.parse = func(args []string) ([]string, error) {
+	pm.parse = func(args []string, negative bool) ([]string, error) {
 		targetType := reflect.TypeOf(pm.target)
 		pm.valid = targetType.Kind() == reflect.Slice
 		err := unmarshalInto(args[0], pm.target)
@@ -337,6 +337,13 @@ func FromStruct(target interface{}) (params []Param) {
 		case "+":
 		default:
 			panic(fmt.Sprintf("unhandled arity %q on %v", arity, type_))
+		}
+		default_ := structField.Tag.Get("default")
+		if default_ != "" {
+			_, err := pm.parse([]string{default_}, false)
+			if err != nil {
+				panic(fmt.Errorf("setting default %q: %w", default_, err))
+			}
 		}
 		params = append(params, pm)
 	}
