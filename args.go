@@ -59,14 +59,6 @@ func unmarshalInto(s string, target interface{}) error {
 	return nil
 }
 
-func AfterParse(f func() error) ParamOpt {
-	return func(p *param) {
-		p.afterParse = append(p.afterParse, f)
-	}
-}
-
-type ParamOpt func(*param)
-
 func Pos(name string, target interface{}, opts ...ParamOpt) *param {
 	pm := &param{
 		target:     target,
@@ -299,8 +291,8 @@ func (me *SubCmdCtx) NewParser() *Parser {
 
 type SubcommandRunner func(ctx SubCmdCtx) (err error)
 
-func Subcommand(name string, run SubcommandRunner) *param {
-	return &param{
+func Subcommand(name string, run SubcommandRunner, opts ...ParamOpt) *param {
+	pm := &param{
 		run:        run,
 		name:       name,
 		long:       []string{name},
@@ -309,6 +301,10 @@ func Subcommand(name string, run SubcommandRunner) *param {
 		nullary:    true,
 		valid:      true,
 	}
+	for _, opt := range opts {
+		opt(pm)
+	}
+	return pm
 }
 
 func FromStruct(target interface{}) (params []Param) {
