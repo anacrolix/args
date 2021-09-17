@@ -9,6 +9,8 @@ type Param interface {
 	Usage() Usage
 }
 
+type paramParser func(args []string, negative bool) (unusedArgs []string, err error)
+
 type param struct {
 	target interface{}
 	long   []string
@@ -16,7 +18,7 @@ type param struct {
 	run    func(SubCmdCtx) error
 	// Doesn't take arguments (except any attached to a switch).
 	nullary    bool
-	parse      func(args []string, negative bool) (unusedArgs []string, err error)
+	parse      paramParser
 	afterParse []func() error
 	// The param is filled based on its position, rather than a switch
 	positional bool

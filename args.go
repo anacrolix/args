@@ -53,6 +53,13 @@ func unmarshalInto(s string, target interface{}) error {
 			return err
 		}
 		value.SetBool(b)
+	//case reflect.Ptr:
+	//	ptrNew := reflect.New(value.Type().Elem())
+	//	err := unmarshalInto(s, ptrNew.Interface())
+	//	if err != nil {
+	//		return fmt.Errorf("unmarshalling into %v: %w", ptrNew, err)
+	//	}
+	//	value.Set(ptrNew)
 	default:
 		return fmt.Errorf("unhandled target type %v", value.Type())
 	}
@@ -325,13 +332,7 @@ func FromStruct(target interface{}) (params []Param) {
 		switch target.(type) {
 		case *bool, **bool:
 			pm.nullary = true
-			pm.parse = func(args []string, negative bool) (unusedArgs []string, err error) {
-				s := "true"
-				if negative {
-					s = "false"
-				}
-				return args, unmarshalInto(s, target)
-			}
+			pm.parse = boolFlagParser(target)
 			pm.satisfied = true
 			pm.negative = "no"
 		default:
