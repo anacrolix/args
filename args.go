@@ -53,13 +53,13 @@ func unmarshalInto(s string, target interface{}) error {
 			return err
 		}
 		value.SetBool(b)
-	//case reflect.Ptr:
-	//	ptrNew := reflect.New(value.Type().Elem())
-	//	err := unmarshalInto(s, ptrNew.Interface())
-	//	if err != nil {
-	//		return fmt.Errorf("unmarshalling into %v: %w", ptrNew, err)
-	//	}
-	//	value.Set(ptrNew)
+	case reflect.Ptr:
+		ptrNew := reflect.New(value.Type().Elem())
+		err := unmarshalInto(s, ptrNew.Interface())
+		if err != nil {
+			return fmt.Errorf("unmarshalling into %v: %w", ptrNew, err)
+		}
+		value.Set(ptrNew)
 	default:
 		return fmt.Errorf("unhandled target type %v", value.Type())
 	}
