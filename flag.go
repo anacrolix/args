@@ -4,6 +4,7 @@ package args
 func Flag(opts FlagOpt) *param {
 	if opts.Target == nil {
 		opts.Target = new(bool)
+		*opts.Target = opts.Default
 	}
 	pm := &param{
 		target:    opts.Target,

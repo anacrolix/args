@@ -18,6 +18,8 @@ type FlagOpt struct {
 	Long   string
 	Target *bool
 	Short  rune
+	// Only used if Target is nil
+	Default bool
 }
 
 func HelpFlag() *param {
@@ -96,15 +98,14 @@ type Parser struct {
 	args      *[]string
 	params    []*param
 	RanSubCmd bool
+	deferred  []func() error
+	posOnly   bool
 }
 
 func (p *Parser) Parse() error {
 	for len(*p.args) > 0 {
 		err := p.ParseOne()
 		if err != nil {
-			if errors.Is(err, ErrHelped) {
-				return nil
-			}
 			return err
 		}
 	}
@@ -174,38 +175,48 @@ func (p *Parser) ParseOne() (err error) {
 	//	return p.parsePositionalOnly(params...)
 	//}
 	*p.args = (*p.args)[1:]
-	if len(arg) > 2 && arg[:2] == "--" {
-		match, err := p.selectOneParam(func(pm *param) match {
-			if pm.positional {
-				return match{ok: false}
-			}
-			for _, l := range pm.long {
-				if l == arg[2:] {
-					return match{ok: true}
+	if !p.posOnly {
+		if arg == "--" {
+			p.posOnly = true
+			return nil
+		}
+		if len(arg) > 2 && arg[:2] == "--" {
+			match, err := p.selectOneParam(func(pm *param) match {
+				if pm.positional {
+					return match{ok: false}
 				}
-				if pm.negative != "" {
-					if pm.negative+"-"+l == arg[2:] {
-						return match{negative: true, ok: true}
+				for _, l := range pm.long {
+					if l == arg[2:] {
+						return match{ok: true}
+					}
+					if pm.negative != "" {
+						if pm.negative+"-"+l == arg[2:] {
+							return match{negative: true, ok: true}
+						}
 					}
 				}
+				return match{ok: false}
+			})
+			if err != nil {
+				return err
 			}
-			return match{ok: false}
-		})
-		if err != nil {
+			if !match.ok {
+				return fmt.Errorf("unmatched switch %q", arg)
+			}
+			if match.param.run != nil {
+				p.RanSubCmd = true
+				var deferred []func() error
+				err := match.param.run(SubCmdCtx{
+					unusedArgs: p.args,
+					parent:     p,
+					deferred:   &deferred,
+				})
+				p.deferred = append(p.deferred, deferred...)
+				return err
+			}
+			err = p.doParse(match.param, *p.args, match.negative)
 			return err
 		}
-		if !match.ok {
-			return fmt.Errorf("unmatched switch %q", arg)
-		}
-		if match.param.run != nil {
-			p.RanSubCmd = true
-			return match.param.run(SubCmdCtx{
-				unusedArgs: p.args,
-				parent:     p,
-			})
-		}
-		err = p.doParse(match.param, *p.args, match.negative)
-		return err
 	}
 	pos, err := p.selectFirstParam(func(pm *param) match {
 		if !pm.positional {
@@ -238,7 +249,10 @@ func (p *Parser) ParseOne() (err error) {
 		return
 	}
 	if subcmd.ok {
-		err = subcmd.param.run(SubCmdCtx{unusedArgs: p.args})
+		err = subcmd.param.run(SubCmdCtx{
+			unusedArgs: p.args,
+			deferred:   &p.deferred,
+		})
 		if err != nil {
 			err = fmt.Errorf("running subcommand %q: %w", subcmd.param.name, err)
 		}
@@ -282,7 +296,11 @@ func (p *Parser) PrintChoices(w io.Writer) {
 type SubCmdCtx struct {
 	unusedArgs *[]string
 	parent     *Parser
-	err        error
+	deferred   *[]func() error
+}
+
+func (me *SubCmdCtx) Defer(f func() error) {
+	*me.deferred = append(*me.deferred, f)
 }
 
 func NewParser() *Parser {
@@ -382,6 +400,11 @@ func ParseMain(params ...Param) {
 		p.Parser.PrintChoices(os.Stderr)
 		FatalUsage()
 	}
+	err := p.Run()
+	if err != nil {
+		log.Printf("error running main parse result: %v", err)
+		FatalUsage()
+	}
 }
 
 func (p *Parser) AddParams(params ...Param) *Parser {
@@ -411,9 +434,15 @@ type ParseResult struct {
 	Parser    *Parser
 }
 
-func (me ParseResult) Run() {
+func (me ParseResult) Run() error {
 	if me.Err != nil {
-		log.Printf("error parsing: %v", me.Err)
-		return
+		return me.Err
 	}
+	for _, f := range me.Parser.deferred {
+		err := f()
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
