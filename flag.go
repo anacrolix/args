@@ -12,6 +12,7 @@ func Flag(opts FlagOpt) *param {
 		satisfied: true,
 		parse:     boolFlagParser(opts.Target),
 		negative:  "no",
+		valid:     true,
 	}
 	if opts.Short != 0 {
 		pm.short = append(pm.short, opts.Short)

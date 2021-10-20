@@ -2,8 +2,10 @@ package args
 
 import (
 	"encoding"
+	"errors"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"reflect"
 	"strconv"
@@ -29,6 +31,7 @@ func HelpFlag() *param {
 		name:      "help",
 		satisfied: true,
 		nullary:   true,
+		valid:     true,
 	}
 }
 
@@ -93,13 +96,15 @@ type Parser struct {
 	args      *[]string
 	params    []*param
 	RanSubCmd bool
-	Err       error
 }
 
 func (p *Parser) Parse() error {
 	for len(*p.args) > 0 {
 		err := p.ParseOne()
 		if err != nil {
+			if errors.Is(err, ErrHelped) {
+				return nil
+			}
 			return err
 		}
 	}
@@ -262,10 +267,10 @@ func (p *Parser) PrintChoices(w io.Writer) {
 		u := pm.Usage()
 		fmt.Fprintf(w, "  ")
 		if len(u.Switches) != 0 {
-			fmt.Fprintf(w, "%v ", strings.Join(u.Switches, ","))
+			fmt.Fprintf(w, "%v", strings.Join(u.Switches, ","))
 		}
 		for _, arg := range u.Arguments {
-			fmt.Fprintf(w, "<%v>", arg)
+			fmt.Fprintf(w, " <%v>", arg)
 		}
 		fmt.Fprintf(w, "\n")
 		if u.Help != "" {
@@ -365,8 +370,18 @@ func FromStruct(target interface{}) (params []Param) {
 	return
 }
 
-func ParseMain(params ...Param) *Parser {
-	return Parse(os.Args[1:], params...)
+func ParseMain(params ...Param) {
+	p := Parse(os.Args[1:], params...)
+	if p.Err != nil {
+		if errors.Is(p.Err, ErrHelped) {
+			return
+		}
+		log.Printf("error parsing args in main: %v", p.Err)
+	}
+	if !p.RanSubCmd {
+		p.Parser.PrintChoices(os.Stderr)
+		FatalUsage()
+	}
 }
 
 func (p *Parser) AddParams(params ...Param) *Parser {
@@ -376,14 +391,29 @@ func (p *Parser) AddParams(params ...Param) *Parser {
 	return p
 }
 
-func Parse(args []string, params ...Param) *Parser {
+func Parse(args []string, params ...Param) (r ParseResult) {
 	p := NewParser()
 	p.SetArgs(&args)
 	p.AddParams(params...)
-	p.Err = p.Parse()
-	return p
+	r.Parser = p
+	r.Err = p.Parse()
+	r.RanSubCmd = p.RanSubCmd
+	return
 }
 
 func FatalUsage() {
 	os.Exit(2)
+}
+
+type ParseResult struct {
+	Err       error
+	RanSubCmd bool
+	Parser    *Parser
+}
+
+func (me ParseResult) Run() {
+	if me.Err != nil {
+		log.Printf("error parsing: %v", me.Err)
+		return
+	}
 }
