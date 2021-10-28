@@ -110,9 +110,10 @@ type Parser struct {
 
 func (p *Parser) Parse() error {
 	for len(*p.args) > 0 {
+		arg := (*p.args)[0]
 		err := p.ParseOne()
 		if err != nil {
-			return err
+			return fmt.Errorf("parsing %q: %w", arg, err)
 		}
 	}
 	for _, pm := range p.params {
@@ -369,7 +370,11 @@ func FromStruct(target interface{}) (params []Param) {
 				if arity == "+" {
 					pm.satisfied = true
 				}
-				return args[1:], unmarshalInto(args[0], target)
+				err = unmarshalInto(args[0], target)
+				if err != nil {
+					err = fmt.Errorf("unmarshalling %q: %w", args[0], err)
+				}
+				return args[1:], err
 			}
 		}
 		if !pm.positional {
