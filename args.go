@@ -175,6 +175,27 @@ func (p *Parser) doParse(pm *param, args []string, negative bool) (err error) {
 	return
 }
 
+func (p *Parser) runParam(pm *param) (err error) {
+	p.RanSubCmd = true
+	defer func() {
+		r := recover()
+		if r == nil {
+			return
+		}
+		control, ok := r.(subCmdParseErr)
+		if !ok {
+			panic(r)
+		}
+		err = control.err
+	}()
+	err = pm.run(SubCmdCtx{
+		unusedArgs: p.args,
+		parent:     p,
+		deferred:   &p.deferred,
+	})
+	return
+}
+
 func (p *Parser) ParseOne() (err error) {
 	arg := (*p.args)[0]
 	//log.Printf("processing %q", arg)
@@ -211,15 +232,7 @@ func (p *Parser) ParseOne() (err error) {
 				return fmt.Errorf("unmatched switch %q", arg)
 			}
 			if match.param.run != nil {
-				p.RanSubCmd = true
-				var deferred []func() error
-				err := match.param.run(SubCmdCtx{
-					unusedArgs: p.args,
-					parent:     p,
-					deferred:   &deferred,
-				})
-				p.deferred = append(p.deferred, deferred...)
-				return err
+				return p.runParam(match.param)
 			}
 			err = p.doParse(match.param, *p.args, match.negative)
 			return err
@@ -256,14 +269,10 @@ func (p *Parser) ParseOne() (err error) {
 		return
 	}
 	if subcmd.ok {
-		err = subcmd.param.run(SubCmdCtx{
-			unusedArgs: p.args,
-			deferred:   &p.deferred,
-		})
+		err = p.runParam(subcmd.param)
 		if err != nil {
 			err = fmt.Errorf("running subcommand %q: %w", subcmd.param.name, err)
 		}
-		p.RanSubCmd = true
 		return
 	}
 	return errUnexpectedArg{
@@ -324,6 +333,20 @@ func (me *SubCmdCtx) NewParser() *Parser {
 	p := NewParser()
 	p.SetArgs(me.unusedArgs)
 	return p
+}
+
+// Parses given params and aborts and returns the subcommand context on an error.
+func (me *SubCmdCtx) Parse(params ...Param) {
+	p := me.NewParser()
+	p.AddParams(params...)
+	err := p.Parse()
+	if err != nil {
+		panic(subCmdParseErr{err})
+	}
+}
+
+type subCmdParseErr struct {
+	err error
 }
 
 type SubcommandRunner func(ctx SubCmdCtx) (err error)
