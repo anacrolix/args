@@ -426,6 +426,7 @@ func FromStruct(target interface{}) (params []Param) {
 	return
 }
 
+// TODO: Rename just Main?
 func ParseMain(params ...Param) {
 	p := Parse(os.Args[1:], params...)
 	if p.Err != nil {
@@ -433,6 +434,7 @@ func ParseMain(params ...Param) {
 			return
 		}
 		log.Printf("error parsing args in main: %v", p.Err)
+		FatalUsage()
 	}
 	if !p.RanSubCmd {
 		p.Parser.PrintChoices(os.Stderr)
