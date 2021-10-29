@@ -379,7 +379,7 @@ func FromStruct(target interface{}) (params []Param) {
 			continue
 		}
 		pm := &param{
-			name:       structField.Name,
+			name:       fmt.Sprintf("%v.%v", type_.Name(), structField.Name),
 			target:     target,
 			positional: argTag == "positional",
 			valid:      true,
