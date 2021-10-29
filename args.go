@@ -374,10 +374,14 @@ func FromStruct(target interface{}) (params []Param) {
 		fieldValue := value.Field(i)
 		target := fieldValue.Addr().Interface()
 		structField := type_.Field(i)
+		argTag := structField.Tag.Get("arg")
+		if argTag == "-" {
+			continue
+		}
 		pm := &param{
 			name:       structField.Name,
 			target:     target,
-			positional: structField.Tag.Get("arg") == "positional",
+			positional: argTag == "positional",
 			valid:      true,
 			help:       structField.Tag.Get("help"),
 		}
