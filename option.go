@@ -1,11 +1,14 @@
 package args
 
+import (
+	"errors"
+)
+
 type OptOpt struct {
 	Long     string
 	Target   interface{}
 	Short    rune
 	Required bool
-	Arity    string
 }
 
 // Options are switches that take arguments.
@@ -24,8 +27,9 @@ func Opt(opts OptOpt) *param {
 		pm.short = append(pm.short, opts.Short)
 	}
 	pm.parse = func(args []string, negative bool) (unusedArgs []string, err error) {
-		if opts.Arity == "+" {
-			pm.satisfied = true
+		pm.satisfied = true
+		if len(args) < 1 {
+			return args, errors.New("insufficient arguments")
 		}
 		return args[1:], unmarshalInto(args[0], opts.Target)
 	}
