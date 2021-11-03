@@ -26,6 +26,9 @@ func HelpFlag() *param {
 }
 
 func unmarshalInto(s string, target interface{}) error {
+	if builtin, ok := builtinUnmarshallers[reflect.TypeOf(target)]; ok {
+		return builtin(s, target)
+	}
 	if herp, ok := target.(encoding.TextUnmarshaler); ok {
 		return herp.UnmarshalText([]byte(s))
 	}
