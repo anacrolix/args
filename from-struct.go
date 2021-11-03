@@ -53,7 +53,9 @@ func FromStruct(target interface{}) (params []Param) {
 		switch arity {
 		case "*", "?":
 			pm.satisfied = true
-		case "+", "":
+		case "+":
+		case "":
+			pm.satisfied = !pm.positional
 		default:
 			panic(fmt.Sprintf("unhandled arity %q on %v", arity, type_))
 		}
