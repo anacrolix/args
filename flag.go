@@ -1,5 +1,13 @@
 package args
 
+type FlagOpt struct {
+	Long   string
+	Target *bool
+	Short  rune
+	// Only used if Target is nil
+	Default bool
+}
+
 // Flags are switches that don't take arguments.
 func Flag(opts FlagOpt) *param {
 	if opts.Target == nil {
