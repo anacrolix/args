@@ -16,14 +16,16 @@ func (me *SubCmdCtx) NewParser() *Parser {
 	return p
 }
 
-// Parses given params and aborts and returns the subcommand context on an error.
-func (me *SubCmdCtx) Parse(params ...Param) {
+// Parses given params and aborts and returns the subcommand context on an error. Returns *Parser in
+// case caller wants to examine conditions of the parse. Errors are otherwise handled automatically.
+func (me *SubCmdCtx) Parse(params ...Param) *Parser {
 	p := me.NewParser()
 	p.AddParams(params...)
 	err := p.Parse()
 	if err != nil {
 		panic(subCmdParseErr{err})
 	}
+	return p
 }
 
 type subCmdParseErr struct {
