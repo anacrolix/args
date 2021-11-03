@@ -65,9 +65,13 @@ func unmarshalInto(s string, target interface{}) error {
 	return nil
 }
 
-// TODO: Rename just Main?
-func ParseMain(params ...Param) {
-	p := Parse(os.Args[1:], params...)
+type Main struct {
+	Params     []Param
+	AfterParse func() error
+}
+
+func (m Main) Do() {
+	p := Parse(os.Args[1:], m.Params...)
 	if p.Err != nil {
 		if errors.Is(p.Err, ErrHelped) {
 			return
@@ -79,11 +83,21 @@ func ParseMain(params ...Param) {
 		p.Parser.PrintChoices(os.Stderr)
 		FatalUsage()
 	}
+	if m.AfterParse != nil {
+		m.AfterParse()
+	}
 	err := p.Run()
 	if err != nil {
 		log.Printf("error running main parse result: %v", err)
 		FatalUsage()
 	}
+}
+
+// Deprecated: Use Main
+func ParseMain(params ...Param) {
+	Main{
+		Params: params,
+	}.Do()
 }
 
 func Parse(args []string, params ...Param) (r ParseResult) {
