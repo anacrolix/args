@@ -237,6 +237,9 @@ func (p *Parser) ParseOne() (err error) {
 			err = p.doParse(match.param, *p.args, match.negative)
 			return err
 		}
+		if arg[0] == '-' {
+			return errors.New("short flags not yet supported")
+		}
 	}
 	pos, err := p.selectFirstParam(func(pm *param) match {
 		if !pm.positional {
