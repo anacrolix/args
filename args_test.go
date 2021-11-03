@@ -15,7 +15,7 @@ func ExampleLongHelp() {
 	Parse([]string{"--help"}, flag).Run()
 	// Output:
 	// valid arguments at this point:
-	//   --help,-h
+	//   --help|-h
 	//   --flag
 }
 

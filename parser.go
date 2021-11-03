@@ -207,7 +207,7 @@ func (p *Parser) PrintChoices(w io.Writer) {
 		u := pm.Usage()
 		fmt.Fprintf(w, "  ")
 		if len(u.Switches) != 0 {
-			fmt.Fprintf(w, "%v", strings.Join(u.Switches, ","))
+			fmt.Fprintf(w, "%v", strings.Join(u.Switches, "|"))
 		}
 		for _, arg := range u.Arguments {
 			fmt.Fprintf(w, " <%v>", arg)

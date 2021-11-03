@@ -55,7 +55,7 @@ func (p *param) Usage() (u Usage) {
 		}
 	}
 	if !p.nullary {
-		u.Arguments = append(u.Arguments, p.name)
+		u.Arguments = append(u.Arguments, reflect.TypeOf(p.target).Elem().String())
 	}
 	u.Help = p.help
 	return
