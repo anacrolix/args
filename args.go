@@ -397,8 +397,11 @@ func FromStruct(target interface{}) (params []Param) {
 			pm.negative = "no"
 		default:
 			pm.parse = func(args []string, negative bool) (unusedArgs []string, err error) {
-				if arity == "+" {
-					pm.satisfied = true
+				pm.satisfied = true
+				switch arity {
+				case "+", "*":
+				default:
+					pm.valid = false
 				}
 				err = unmarshalInto(args[0], target)
 				if err != nil {
@@ -411,9 +414,9 @@ func FromStruct(target interface{}) (params []Param) {
 			pm.long = []string{xstrings.ToKebabCase(structField.Name)}
 		}
 		switch arity {
-		case "":
+		case "*", "?":
 			pm.satisfied = true
-		case "+":
+		case "+", "":
 		default:
 			panic(fmt.Sprintf("unhandled arity %q on %v", arity, type_))
 		}

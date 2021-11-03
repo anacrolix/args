@@ -36,3 +36,16 @@ func TestLeadingHyphenArg(t *testing.T) {
 	c.Log(r.Err)
 	c.Check(r.Err, qt.IsNotNil)
 }
+
+func TestStructPositional(t *testing.T) {
+	c := qt.New(t)
+	var s struct {
+		One  string   `arg:"positional"`
+		Plus []string `arg:"positional" arity:"*"`
+	}
+	c.Check(Parse(nil, FromStruct(&s)...).Err, qt.IsNotNil)
+
+	c.Check(Parse([]string{"first", "second", "third"}, FromStruct(&s)...).Err, qt.IsNil)
+	c.Check(s.One, qt.Equals, "first")
+	c.Check(s.Plus, qt.DeepEquals, []string{"second", "third"})
+}
