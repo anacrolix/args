@@ -25,7 +25,7 @@ func (p *Parser) Parse() error {
 	}
 	for _, pm := range p.params {
 		if !pm.satisfied {
-			return fmt.Errorf("parameter not satisfied: %v", pm)
+			return fmt.Errorf("parameter not satisfied: %q", pm)
 		}
 	}
 	return nil

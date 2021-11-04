@@ -2,6 +2,8 @@ package args
 
 import (
 	"errors"
+
+	"github.com/huandu/xstrings"
 )
 
 type OptOpt struct {
@@ -18,7 +20,7 @@ func Opt(opts OptOpt) *param {
 	}
 	pm := &param{
 		target:    opts.Target,
-		long:      []string{opts.Long},
+		long:      []string{xstrings.ToKebabCase(opts.Long)},
 		nullary:   false,
 		satisfied: !opts.Required,
 		valid:     true,
