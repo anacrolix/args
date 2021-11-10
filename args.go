@@ -62,6 +62,12 @@ func unmarshalInto(s string, target interface{}) error {
 			return err
 		}
 		value.SetInt(i64)
+	case reflect.Uint16:
+		i64, err := strconv.ParseUint(s, 0, 16)
+		if err != nil {
+			return err
+		}
+		value.SetUint(i64)
 	default:
 		return fmt.Errorf("unhandled target type %v", value.Type())
 	}
