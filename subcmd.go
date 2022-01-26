@@ -32,7 +32,7 @@ type subCmdParseErr struct {
 	err error
 }
 
-type SubcommandRunner func(ctx SubCmdCtx) (err error)
+type SubcommandRunner func(sub SubCmdCtx) (err error)
 
 func Subcommand(name string, run SubcommandRunner, opts ...ParamOpt) *param {
 	pm := &param{
