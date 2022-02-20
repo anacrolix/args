@@ -28,6 +28,7 @@ type param struct {
 	help      string
 	satisfied bool
 	negative  string
+	arity     arity
 }
 
 func (p *param) String() string {

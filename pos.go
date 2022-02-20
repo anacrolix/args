@@ -13,8 +13,12 @@ func Pos(name string, target interface{}, opts ...ParamOpt) *param {
 		name:       name,
 	}
 	pm.parse = func(args []string, negative bool) ([]string, error) {
-		targetType := reflect.TypeOf(pm.target)
-		pm.valid = targetType.Kind() == reflect.Slice
+		targetType := reflect.TypeOf(pm.target).Elem()
+		switch pm.arity {
+		case '+', '*':
+		default:
+			pm.valid = false
+		}
 		pm.satisfied = true
 		err := unmarshalInto(args[0], pm.target)
 		if err != nil {
@@ -24,6 +28,10 @@ func Pos(name string, target interface{}, opts ...ParamOpt) *param {
 	}
 	for _, opt := range opts {
 		opt(pm)
+	}
+	switch pm.arity {
+	case '*', '?':
+		pm.satisfied = true
 	}
 	return pm
 }

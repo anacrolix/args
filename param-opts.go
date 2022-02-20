@@ -13,3 +13,9 @@ func AfterParse(f func() error) ParamOpt {
 		p.afterParse = append(p.afterParse, f)
 	}
 }
+
+func Arity(arity byte) ParamOpt {
+	return func(p *param) {
+		p.arity = arity
+	}
+}
