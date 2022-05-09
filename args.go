@@ -79,11 +79,11 @@ type Main struct {
 	AfterParse func() error
 }
 
-func (m Main) Do() {
+func (m Main) Do() error {
 	p := Parse(os.Args[1:], m.Params...)
 	if p.Err != nil {
 		if errors.Is(p.Err, ErrHelped) {
-			return
+			return nil
 		}
 		log.Printf("error parsing args in main: %v", p.Err)
 		FatalUsage()
@@ -95,16 +95,12 @@ func (m Main) Do() {
 	if m.AfterParse != nil {
 		m.AfterParse()
 	}
-	err := p.Run()
-	if err != nil {
-		log.Printf("error running main parse result: %v", err)
-		FatalUsage()
-	}
+	return p.Run()
 }
 
 // Deprecated: Use Main
-func ParseMain(params ...Param) {
-	Main{
+func ParseMain(params ...Param) error {
+	return Main{
 		Params: params,
 	}.Do()
 }
