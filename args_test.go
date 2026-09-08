@@ -3,7 +3,7 @@ package args
 import (
 	"testing"
 
-	qt "github.com/frankban/quicktest"
+	"github.com/go-quicktest/qt"
 )
 
 func ExampleLongHelp() {
@@ -24,28 +24,26 @@ func TestLeadingHyphenArg(t *testing.T) {
 	var arg string
 	pos := Pos("arg", &arg)
 	r := Parse([]string{"-no-flag", "actual"}, flag)
-	c := qt.New(t)
-	c.Check(r.Err, qt.IsNotNil)
+	qt.Check(t, qt.IsNotNil(r.Err))
 
 	r = Parse([]string{"--", "-no-flag"}, flag, pos)
-	c.Check(r.Err, qt.IsNil)
-	c.Check(arg, qt.Equals, "-no-flag")
-	c.Check(flag.Bool(), qt.IsTrue)
+	qt.Check(t, qt.IsNil(r.Err))
+	qt.Check(t, qt.Equals(arg, "-no-flag"))
+	qt.Check(t, qt.IsTrue(flag.Bool()))
 
 	r = Parse([]string{"--", "-no-flag", "actual"}, flag)
-	c.Log(r.Err)
-	c.Check(r.Err, qt.IsNotNil)
+	t.Log(r.Err)
+	qt.Check(t, qt.IsNotNil(r.Err))
 }
 
 func TestStructPositional(t *testing.T) {
-	c := qt.New(t)
 	var s struct {
 		One  string   `arg:"positional"`
 		Plus []string `arg:"positional" arity:"*"`
 	}
-	c.Check(Parse(nil, FromStruct(&s)...).Err, qt.IsNotNil)
+	qt.Check(t, qt.IsNotNil(Parse(nil, FromStruct(&s)...).Err))
 
-	c.Check(Parse([]string{"first", "second", "third"}, FromStruct(&s)...).Err, qt.IsNil)
-	c.Check(s.One, qt.Equals, "first")
-	c.Check(s.Plus, qt.DeepEquals, []string{"second", "third"})
+	qt.Check(t, qt.IsNil(Parse([]string{"first", "second", "third"}, FromStruct(&s)...).Err))
+	qt.Check(t, qt.Equals(s.One, "first"))
+	qt.Check(t, qt.DeepEquals(s.Plus, []string{"second", "third"}))
 }
