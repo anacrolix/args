@@ -6,7 +6,7 @@ import (
 	qt "github.com/frankban/quicktest"
 )
 
-func ExampleLongHelp() {
+func Example() {
 	flag := Flag(FlagOpt{
 		Long:   "flag",
 		Target: nil,

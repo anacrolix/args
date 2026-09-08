@@ -46,7 +46,7 @@ type Usage struct {
 
 func (p *param) Usage() (u Usage) {
 	if p.positional {
-		u.Switches = append(p.long)
+		u.Switches = p.long
 	} else {
 		for _, l := range p.long {
 			u.Switches = append(u.Switches, "--"+l)
