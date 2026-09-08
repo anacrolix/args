@@ -6,7 +6,7 @@ import (
 	"github.com/go-quicktest/qt"
 )
 
-func ExampleLongHelp() {
+func Example() {
 	flag := Flag(FlagOpt{
 		Long:   "flag",
 		Target: nil,
